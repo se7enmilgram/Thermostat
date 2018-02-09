@@ -60,6 +60,7 @@ class Thermostat( object ):
         self.dht22_hum = -1
         
         #setup gpio pins
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD)
         pins = [self.heat_pin,
                 self.cool_pin,
@@ -158,7 +159,9 @@ class ThermostatApp( object ):
                  temp=None,
                  cache=5
                  ):
+        from blynkapi import Blynk
         self.token = token
+        self._project=Blynk(token=token)
         self._pin_setpoint=self._make_pin(setpoint)
         self._pin_upper=self._make_pin(upper)
         self._pin_lower=self._make_pin(lower)
@@ -177,6 +180,8 @@ class ThermostatApp( object ):
         self._pin_hum=self._make_pin(hum)
         self.cache = cache
         self._cache = {}
+        self._cache_hits = 0
+        self._cache_miss = 0
     
     def _make_pin(self, pin):
         from blynkapi import Blynk
@@ -193,13 +198,26 @@ class ThermostatApp( object ):
         if pin in self._cache:
             if time() <= self._cache[pin]['time'] + self.cache:
                 #cache is not expired, return val
+                self._cache_hits += 1
                 return self._cache[pin]['val']
+        self._cache_miss += 1
         val = pinobj.get_val()
         self._cache[pin] = {
             'time': time(),
             'val': val
         }
         return val
+    
+    def update( self ):
+        from time import time
+        widgets = self._project.get_project()
+        widgets = widgets['widgets']
+        widgets = [i for i in widgets if 'pin' in i]
+        for w in widgets:
+            self._cache['V{}'.format(w['pin'])] = {
+                'time': time(),
+                'val': [w['value']]
+            }
     
     @property
     def setpoint(self):
@@ -263,6 +281,8 @@ class ThermostatApp( object ):
     
     @lcd1.setter
     def lcd1(self, value):
+        if self.away_switch:
+            value = 'AWAY:' + value
         self._blynk_write(self._pin_lcd1.pin,value)
     
     @property

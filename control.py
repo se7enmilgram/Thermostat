@@ -1,3 +1,4 @@
+#! /usr/bin/python
 # Thermostat Control
 # SJC 2/2018
 
@@ -20,7 +21,7 @@ class State(object):
 
 state = State(IDLE, None)
 
-e = http_event_collector('redacted-reda-cted-reda-ctedredacted', 'splunk.hostname')
+ec = http_event_collector('redacted-reda-cted-reda-ctedredacted', 'splunk.hostname')
 
 ta = ThermostatApp(
     token='redacted',
@@ -80,9 +81,13 @@ def rest(t):
 def loop():
     t = th.temp
     h = th.hum
+    ta.update()
     ta.temp = t
     ta.hum = h
-    sp = ta.setpoint
+    if ta.away_switch:
+        sp = ta.away_setpoint
+    else:
+        sp = ta.setpoint
     u = ta.upper
     l = ta.lower
     lower = sp - l
@@ -91,7 +96,7 @@ def loop():
         if t <= lower:
             start_heat(t)
         else:
-            sleep(5)
+            pass
     elif state.state == HEAT:
         if time() <= state.time + ta.min_run*60:
             time_left = (state.time + ta.min_run*60) - time()
@@ -116,9 +121,9 @@ def loop():
             stop_heat()
         elif lower <= t <= upper:
             idle()
-    event = {}
-    event.update({
-        'temperature': (t*1.8)+32,
+
+    e = {
+        'temperature': t,
         'humidity': h,
         'upper': ta.upper,
         'lower': ta.lower,
@@ -126,7 +131,26 @@ def loop():
         'heat': ta.heat,
         'cool': ta.cool,
         'fan': ta.fan
-    })
-    e.sendEvent({'event': event})
+    }
+    ec.sendEvent({'event': e})
+
+    e = {
+        'debug': True,
+        'cache_hits': ta._cache_hits,
+        'cache_misses': ta._cache_miss,
+        'away_switch': ta.away_switch,
+        'temp_switch': ta.temp_switch,
+        'setpoint': sp,
+        'lower': lower,
+        'upper': upper
+    }
+    
+    ec.sendEvent({'event': e})
+    
+    if state.state == IDLE:
+        sleep(5)
+    else:
+        sleep(1)
+    
 while True:
     loop()
